@@ -7,6 +7,7 @@ enum Expr {
     Int(i32),
     String(String),
     Field(i32),
+    Bool(bool),
     And(Box<Expr>, Box<Expr>),
     Or(Box<Expr>, Box<Expr>),
     EqualTo(Box<Expr>, Box<Expr>),
@@ -32,13 +33,21 @@ fn to_expr(v: Value) -> Box<Expr> {
     use serde_json::Value::*;
 
     let res = match v {
+        Null => Expr::Null,
         Number(n) => {
             let n = n.as_i64().unwrap() as i32;
             Expr::Int(n)
         }
         String(s) => Expr::String(s),
+        Bool(b) => Expr::Bool(b),
+        Object(_) => panic!(), // TODO Objects aren't supported
         Array(v) => match v.as_slice() {
-            // TODO, there might be other variadic functions
+            // TODO, there might be other variadic functions,
+            // But for now we always assume it's equal
+            // but for example AND 1, 2, 3 would be invalid SQL probably
+            // also if you know rust and are wondering why there is `.cloned() and to_owned` here and there
+            // it's because I can't use the rest pattern if `v` is the object instead of pointers
+            // because the size of the object isn't know at compile time
             [String(s), x, rest @ ..] if rest.len() > 1 => {
                 let exprs: Vec<Box<Expr>> = rest.iter().cloned().map(to_expr).collect();
                 Expr::VariadicEqual(to_expr(x.to_owned()), exprs)
@@ -59,9 +68,10 @@ fn to_expr(v: Value) -> Box<Expr> {
             [String(s), Number(i)] => Expr::Field(i.as_i64().unwrap() as i32),
             // Bad way of checking if it's a macro
             [String(s), String(n)] => Expr::Macro(n.to_owned()),
+            // There are cases that aren't covered,
+            // If you remove this _ the compiler will complain
             _ => Expr::Null,
         },
-        _ => Expr::Null,
     };
 
     Box::new(res)
