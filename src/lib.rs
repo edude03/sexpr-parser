@@ -23,6 +23,9 @@ pub enum Expr {
 // It doesn't matter, but if the tree was large and more complex that would
 // be a pretty easy optimization
 fn to_expr(v: Value) -> Result<Box<Expr>, &'static String> {
+    // This makes one copy of the input since a pure function conversion method shouldn't change
+    // the data that was passed in. The idea is one copy of the tree is better then recursively copying
+    // the tree as the previous version did.
     priv_to_expr(&mut v.to_owned())
 }
 
