@@ -22,7 +22,11 @@ pub enum Expr {
 // I could use .take() instead of clone. For a problem of this size
 // It doesn't matter, but if the tree was large and more complex that would
 // be a pretty easy optimization
-pub fn to_expr(v: Value) -> Result<Box<Expr>, &'static String> {
+fn to_expr(v: Value) -> Result<Box<Expr>, &'static String> {
+    priv_to_expr(&mut v.to_owned())
+}
+
+fn priv_to_expr(v: &mut Value) -> Result<Box<Expr>, &'static String> {
     use serde_json::Value::*;
 
     let res = match v {
@@ -31,10 +35,10 @@ pub fn to_expr(v: Value) -> Result<Box<Expr>, &'static String> {
             let n = n.as_i64().unwrap() as i32;
             Expr::Int(n)
         }
-        String(s) => Expr::String(s),
-        Bool(b) => Expr::Bool(b),
+        String(s) => Expr::String(s.to_string()),
+        Bool(b) => Expr::Bool(*b),
         Object(_) => panic!(), // TODO Objects aren't supported
-        Array(v) => match v.as_slice() {
+        Array(v) => match v.as_mut_slice() {
             // TODO, there might be other variadic functions,
             // But for now we always assume it's equal
             // but for example AND 1, 2, 3 would be invalid SQL probably
@@ -43,13 +47,13 @@ pub fn to_expr(v: Value) -> Result<Box<Expr>, &'static String> {
             // because the size of the object isn't know at compile time
             [String(s), x, rest @ ..] if rest.len() > 1 => {
                 // Look what rustfmt did to my boy :'(
-                let exprs: Vec<Box<Expr>> = rest.iter().cloned().map(to_expr).collect::<Result<
-                    Vec<Box<Expr>>,
-                    &'static std::string::String,
-                >>(
-                )?;
+                let exprs: Vec<Box<Expr>> = rest
+                    .iter_mut()
+                    .map(|x| x.take())
+                    .map(to_expr)
+                    .collect::<Result<Vec<Box<Expr>>, &'static std::string::String>>()?;
 
-                Expr::VariadicEqual(to_expr(x.to_owned())?, exprs)
+                Expr::VariadicEqual(to_expr(x.take())?, exprs)
             }
             [String(s), x, y] => {
                 let expr = match s.as_str() {
@@ -61,13 +65,13 @@ pub fn to_expr(v: Value) -> Result<Box<Expr>, &'static String> {
                     "=" => Expr::EqualTo,
                     _ => panic!(), // Unimplemented operand
                 };
-                expr(to_expr(x.to_owned())?, to_expr(y.to_owned())?)
+                expr(to_expr(x.take())?, to_expr(y.take())?)
             }
             // Bad way of checking if it's a Field type
             // TODO, handle the error
             [String(s), Number(i)] => Expr::Field(i.as_i64().unwrap() as i32),
             // Bad way of checking if it's a macro
-            [String(s), String(n)] => Expr::Macro(n.to_owned()),
+            [String(s), String(n)] => Expr::Macro(n.to_string()),
             // There are cases that aren't covered,
             // If you remove this _ the compiler will complain
             _ => Expr::Null,
