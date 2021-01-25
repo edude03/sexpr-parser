@@ -26,7 +26,7 @@ fn to_expr(v: Value) -> Result<Box<Expr>, &'static String> {
     // This makes one copy of the input since a pure function conversion method shouldn't change
     // the data that was passed in. The idea is one copy of the tree is better then recursively copying
     // the tree as the previous version
-    priv_to_expr(&mut v.to_owned())
+    priv_to_expr(v.clone())
 }
 
 fn priv_to_expr(v: Value) -> Result<Box<Expr>, &'static String> {
@@ -41,7 +41,7 @@ fn priv_to_expr(v: Value) -> Result<Box<Expr>, &'static String> {
         String(s) => Expr::String(s),
         Bool(b) => Expr::Bool(b),
         Object(_) => panic!(), // TODO Objects aren't supported
-        Array(v) => match v.as_mut_slice() {
+        Array(mut v) => match v.as_mut_slice() {
             // TODO, there might be other variadic functions,
             // But for now we always assume it's equal
             // but for example AND 1, 2, 3 would be invalid SQL probably
