@@ -25,11 +25,11 @@ pub enum Expr {
 fn to_expr(v: Value) -> Result<Box<Expr>, &'static String> {
     // This makes one copy of the input since a pure function conversion method shouldn't change
     // the data that was passed in. The idea is one copy of the tree is better then recursively copying
-    // the tree as the previous version did.
+    // the tree as the previous version
     priv_to_expr(&mut v.to_owned())
 }
 
-fn priv_to_expr(v: &mut Value) -> Result<Box<Expr>, &'static String> {
+fn priv_to_expr(v: Value) -> Result<Box<Expr>, &'static String> {
     use serde_json::Value::*;
 
     let res = match v {
@@ -38,8 +38,8 @@ fn priv_to_expr(v: &mut Value) -> Result<Box<Expr>, &'static String> {
             let n = n.as_i64().unwrap() as i32;
             Expr::Int(n)
         }
-        String(s) => Expr::String(s.to_string()),
-        Bool(b) => Expr::Bool(*b),
+        String(s) => Expr::String(s),
+        Bool(b) => Expr::Bool(b),
         Object(_) => panic!(), // TODO Objects aren't supported
         Array(v) => match v.as_mut_slice() {
             // TODO, there might be other variadic functions,
@@ -50,13 +50,13 @@ fn priv_to_expr(v: &mut Value) -> Result<Box<Expr>, &'static String> {
             // because the size of the object isn't know at compile time
             [String(s), x, rest @ ..] if rest.len() > 1 => {
                 // Look what rustfmt did to my boy :'(
-                let exprs: Vec<Box<Expr>> = rest
-                    .iter_mut()
-                    .map(|x| x.take())
-                    .map(to_expr)
-                    .collect::<Result<Vec<Box<Expr>>, &'static std::string::String>>()?;
+                let exprs: Vec<Box<Expr>> =
+                    rest.iter_mut()
+                        .map(|x| x.take())
+                        .map(priv_to_expr)
+                        .collect::<Result<Vec<Box<Expr>>, &'static std::string::String>>()?;
 
-                Expr::VariadicEqual(to_expr(x.take())?, exprs)
+                Expr::VariadicEqual(priv_to_expr(x.take())?, exprs)
             }
             [String(s), x, y] => {
                 let expr = match s.as_str() {
@@ -68,7 +68,7 @@ fn priv_to_expr(v: &mut Value) -> Result<Box<Expr>, &'static String> {
                     "=" => Expr::EqualTo,
                     _ => panic!(), // Unimplemented operand
                 };
-                expr(to_expr(x.take())?, to_expr(y.take())?)
+                expr(priv_to_expr(x.take())?, priv_to_expr(y.take())?)
             }
             // Bad way of checking if it's a Field type
             // TODO, handle the error
