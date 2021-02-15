@@ -22,7 +22,7 @@ pub enum Expr {
 // I could use .take() instead of clone. For a problem of this size
 // It doesn't matter, but if the tree was large and more complex that would
 // be a pretty easy optimization
-fn to_expr(v: Value) -> Result<Box<Expr>, &'static String> {
+pub fn to_expr(v: &Value) -> Result<Box<Expr>, &'static String> {
     // This makes one copy of the input since a pure function conversion method shouldn't change
     // the data that was passed in. The idea is one copy of the tree is better then recursively copying
     // the tree as the previous version
@@ -94,7 +94,7 @@ mod tests {
         let v = serde_json::from_str(r#"[">", ["field", 4], 35]"#).unwrap();
 
         assert_eq!(
-            to_expr(v).unwrap(),
+            to_expr(&v).unwrap(),
             Box::new(GreaterThan(Box::new(Field(4)), Box::new(Int(35))))
         )
     }
@@ -106,7 +106,7 @@ mod tests {
                 .unwrap();
 
         assert_eq!(
-            to_expr(v).unwrap(),
+            to_expr(&v).unwrap(),
             Box::new(And(
                 Box::new(LessThan(Box::new(Field(1)), Box::new(Int(5)))),
                 Box::new(EqualTo(Box::new(Field(2)), Box::new(String("joe".into())))),
@@ -122,7 +122,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(
-            to_expr(v).unwrap(),
+            to_expr(&v).unwrap(),
             Box::new(Or(
                 Box::new(NotEqualTo(
                     Box::new(Field(3)),
@@ -138,7 +138,7 @@ mod tests {
         let v = serde_json::from_str(r#"["and", ["!=", ["field", 3], null], ["or", [">", ["field", 4], 25], ["=", ["field", 2], "Jerry"]]]"#).unwrap();
 
         assert_eq!(
-            to_expr(v).unwrap(),
+            to_expr(&v).unwrap(),
             Box::new(And(
                 Box::new(NotEqualTo(Box::new(Field(3)), Box::new(Null))),
                 Box::new(Or(
@@ -158,7 +158,7 @@ mod tests {
             serde_json::from_str(r#"["=", ["field", 3], 25, 26, 27]"#).unwrap();
 
         assert_eq!(
-            to_expr(v).unwrap(),
+            to_expr(&v).unwrap(),
             Box::new(VariadicEqual(
                 Box::new(Field(3)),
                 vec![Box::new(Int(25)), Box::new(Int(26)), Box::new(Int(27))],
@@ -172,7 +172,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            to_expr(v).unwrap(),
+            to_expr(&v).unwrap(),
             Box::new(And(
                 Box::new(LessThan(Box::new(Field(1)), Box::new(Int(5)))),
                 Box::new(Macro("is_joe".into())),
