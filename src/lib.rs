@@ -2,7 +2,7 @@ use serde_json::Value;
 use std::convert::TryFrom;
 
 #[derive(Clone, Debug, PartialEq)]
-enum Expr {
+pub enum Expr {
     Null,
     Int(i32),
     String(String),
@@ -18,22 +18,11 @@ enum Expr {
     Macro(String),
 }
 
-fn main() {
-    let sexpr: Value = serde_json::from_str(
-        r#"["and", ["!=", ["field", 3], null], ["or", [">", ["field", 4], 25], ["=", ["field", 2], "Jerry"]]]"#
-    ).unwrap();
-
-    println!("{:?}", sexpr);
-
-    let expr = to_expr(sexpr);
-    println!("{:?}", expr);
-}
-
 // One potential optimization is to pass a &mut Value so that
 // I could use .take() instead of clone. For a problem of this size
 // It doesn't matter, but if the tree was large and more complex that would
 // be a pretty easy optimization
-fn to_expr(v: Value) -> Result<Box<Expr>, &'static String> {
+pub fn to_expr(v: Value) -> Result<Box<Expr>, &'static String> {
     use serde_json::Value::*;
 
     let res = match v {
@@ -142,7 +131,7 @@ mod tests {
         let v = serde_json::from_str(r#"["and", ["!=", ["field", 3], null], ["or", [">", ["field", 4], 25], ["=", ["field", 2], "Jerry"]]]"#).unwrap();
 
         assert_eq!(
-            to_expr(v),
+            to_expr(v).unwrap(),
             Box::new(And(
                 Box::new(NotEqualTo(Box::new(Field(3)), Box::new(Null))),
                 Box::new(Or(
