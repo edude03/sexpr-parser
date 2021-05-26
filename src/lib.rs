@@ -2,7 +2,7 @@ use serde_json::Value;
 use std::convert::TryFrom;
 
 #[derive(Clone, Debug, PartialEq)]
-enum Expr {
+pub enum Expr {
     Null,
     Int(i32),
     String(String),
@@ -18,22 +18,18 @@ enum Expr {
     Macro(String),
 }
 
-fn main() {
-    let sexpr: Value = serde_json::from_str(
-        r#"["and", ["!=", ["field", 3], null], ["or", [">", ["field", 4], 25], ["=", ["field", 2], "Jerry"]]]"#
-    ).unwrap();
-
-    println!("{:?}", sexpr);
-
-    let expr = to_expr(sexpr);
-    println!("{:?}", expr);
-}
-
 // One potential optimization is to pass a &mut Value so that
 // I could use .take() instead of clone. For a problem of this size
 // It doesn't matter, but if the tree was large and more complex that would
 // be a pretty easy optimization
-fn to_expr(v: Value) -> Result<Box<Expr>, &'static String> {
+pub fn to_expr(v: &Value) -> Result<Box<Expr>, &'static String> {
+    // This makes one copy of the input since a pure function conversion method shouldn't change
+    // the data that was passed in. The idea is one copy of the tree is better then recursively copying
+    // the tree as the previous version
+    priv_to_expr(v.clone())
+}
+
+fn priv_to_expr(v: Value) -> Result<Box<Expr>, &'static String> {
     use serde_json::Value::*;
 
     let res = match v {
@@ -45,7 +41,7 @@ fn to_expr(v: Value) -> Result<Box<Expr>, &'static String> {
         String(s) => Expr::String(s),
         Bool(b) => Expr::Bool(b),
         Object(_) => panic!(), // TODO Objects aren't supported
-        Array(v) => match v.as_slice() {
+        Array(mut v) => match v.as_mut_slice() {
             // TODO, there might be other variadic functions,
             // But for now we always assume it's equal
             // but for example AND 1, 2, 3 would be invalid SQL probably
@@ -54,13 +50,13 @@ fn to_expr(v: Value) -> Result<Box<Expr>, &'static String> {
             // because the size of the object isn't know at compile time
             [String(s), x, rest @ ..] if rest.len() > 1 => {
                 // Look what rustfmt did to my boy :'(
-                let exprs: Vec<Box<Expr>> = rest.iter().cloned().map(to_expr).collect::<Result<
-                    Vec<Box<Expr>>,
-                    &'static std::string::String,
-                >>(
-                )?;
+                let exprs: Vec<Box<Expr>> =
+                    rest.iter_mut()
+                        .map(|x| x.take())
+                        .map(priv_to_expr)
+                        .collect::<Result<Vec<Box<Expr>>, &'static std::string::String>>()?;
 
-                Expr::VariadicEqual(to_expr(x.to_owned())?, exprs)
+                Expr::VariadicEqual(priv_to_expr(x.take())?, exprs)
             }
             [String(s), x, y] => {
                 let expr = match s.as_str() {
@@ -72,13 +68,13 @@ fn to_expr(v: Value) -> Result<Box<Expr>, &'static String> {
                     "=" => Expr::EqualTo,
                     _ => panic!(), // Unimplemented operand
                 };
-                expr(to_expr(x.to_owned())?, to_expr(y.to_owned())?)
+                expr(priv_to_expr(x.take())?, priv_to_expr(y.take())?)
             }
             // Bad way of checking if it's a Field type
             // TODO, handle the error
             [String(s), Number(i)] => Expr::Field(i.as_i64().unwrap() as i32),
             // Bad way of checking if it's a macro
-            [String(s), String(n)] => Expr::Macro(n.to_owned()),
+            [String(s), String(n)] => Expr::Macro(n.to_string()),
             // There are cases that aren't covered,
             // If you remove this _ the compiler will complain
             _ => Expr::Null,
@@ -98,7 +94,7 @@ mod tests {
         let v = serde_json::from_str(r#"[">", ["field", 4], 35]"#).unwrap();
 
         assert_eq!(
-            to_expr(v).unwrap(),
+            to_expr(&v).unwrap(),
             Box::new(GreaterThan(Box::new(Field(4)), Box::new(Int(35))))
         )
     }
@@ -110,7 +106,7 @@ mod tests {
                 .unwrap();
 
         assert_eq!(
-            to_expr(v).unwrap(),
+            to_expr(&v).unwrap(),
             Box::new(And(
                 Box::new(LessThan(Box::new(Field(1)), Box::new(Int(5)))),
                 Box::new(EqualTo(Box::new(Field(2)), Box::new(String("joe".into())))),
@@ -126,7 +122,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(
-            to_expr(v).unwrap(),
+            to_expr(&v).unwrap(),
             Box::new(Or(
                 Box::new(NotEqualTo(
                     Box::new(Field(3)),
@@ -142,7 +138,7 @@ mod tests {
         let v = serde_json::from_str(r#"["and", ["!=", ["field", 3], null], ["or", [">", ["field", 4], 25], ["=", ["field", 2], "Jerry"]]]"#).unwrap();
 
         assert_eq!(
-            to_expr(v),
+            to_expr(&v).unwrap(),
             Box::new(And(
                 Box::new(NotEqualTo(Box::new(Field(3)), Box::new(Null))),
                 Box::new(Or(
@@ -162,7 +158,7 @@ mod tests {
             serde_json::from_str(r#"["=", ["field", 3], 25, 26, 27]"#).unwrap();
 
         assert_eq!(
-            to_expr(v).unwrap(),
+            to_expr(&v).unwrap(),
             Box::new(VariadicEqual(
                 Box::new(Field(3)),
                 vec![Box::new(Int(25)), Box::new(Int(26)), Box::new(Int(27))],
@@ -176,7 +172,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            to_expr(v).unwrap(),
+            to_expr(&v).unwrap(),
             Box::new(And(
                 Box::new(LessThan(Box::new(Field(1)), Box::new(Int(5)))),
                 Box::new(Macro("is_joe".into())),
